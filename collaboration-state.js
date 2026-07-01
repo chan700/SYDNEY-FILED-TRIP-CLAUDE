@@ -9,6 +9,7 @@
     return {
       candidates: [],
       finalIds: [],
+      customDaySpots: {},
     };
   }
 
@@ -16,7 +17,20 @@
     return {
       candidates: Array.isArray(state && state.candidates) ? state.candidates : [],
       finalIds: Array.isArray(state && state.finalIds) ? state.finalIds.map(String) : [],
+      customDaySpots: normalizeCustomDaySpots(state && state.customDaySpots),
     };
+  }
+
+  function normalizeCustomDaySpots(customDaySpots) {
+    if (!customDaySpots || typeof customDaySpots !== "object") return {};
+    return Object.entries(customDaySpots).reduce((days, entry) => {
+      const day = entry[0];
+      const spots = entry[1];
+      days[day] = Array.isArray(spots)
+        ? spots.map((spot) => ({ ...spot, id: String(spot.id) }))
+        : [];
+      return days;
+    }, {});
   }
 
   function addCandidate(state, candidate) {
@@ -55,6 +69,42 @@
     return current.candidates.filter((candidate) => selected.has(String(candidate.id)));
   }
 
+  function addDaySpot(state, day, spot) {
+    const current = normalizeState(state);
+    const daySpots = current.customDaySpots[day] || [];
+    return {
+      ...current,
+      customDaySpots: {
+        ...current.customDaySpots,
+        [day]: [
+          ...daySpots,
+          {
+            ...spot,
+            id: String(spot.id),
+            day,
+          },
+        ],
+      },
+    };
+  }
+
+  function getDaySpots(state, day) {
+    const current = normalizeState(state);
+    return current.customDaySpots[day] || [];
+  }
+
+  function removeDaySpot(state, day, spotId) {
+    const current = normalizeState(state);
+    const daySpots = current.customDaySpots[day] || [];
+    return {
+      ...current,
+      customDaySpots: {
+        ...current.customDaySpots,
+        [day]: daySpots.filter((spot) => String(spot.id) !== String(spotId)),
+      },
+    };
+  }
+
   function serializeState(state) {
     return JSON.stringify(normalizeState(state));
   }
@@ -74,6 +124,9 @@
     getCandidatesForStudent,
     getFinalCandidates,
     addFinalCandidates,
+    addDaySpot,
+    getDaySpots,
+    removeDaySpot,
     serializeState,
     hydrateState,
   };

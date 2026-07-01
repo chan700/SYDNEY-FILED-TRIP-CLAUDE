@@ -5,6 +5,9 @@ const {
   getCandidatesForStudent,
   getFinalCandidates,
   addFinalCandidates,
+  addDaySpot,
+  getDaySpots,
+  removeDaySpot,
   serializeState,
   hydrateState,
 } = require("../collaboration-state.js");
@@ -50,6 +53,20 @@ function run() {
   const roundTripped = hydrateState(serializeState(state));
   assert.strictEqual(roundTripped.candidates.length, 2);
   assert.deepStrictEqual(roundTripped.finalIds, ["a1", "b1"]);
+
+  state = addDaySpot(state, "day5", {
+    id: "custom-1",
+    type: "other",
+    name: "Custom Stop",
+    lat: -33.88,
+    lng: 151.22,
+    desc: "Shared stop",
+  });
+  assert.strictEqual(getDaySpots(state, "day5").length, 1);
+  assert.strictEqual(hydrateState(serializeState(state)).customDaySpots.day5[0].name, "Custom Stop");
+
+  state = removeDaySpot(state, "day5", "custom-1");
+  assert.strictEqual(getDaySpots(state, "day5").length, 0);
 }
 
 run();

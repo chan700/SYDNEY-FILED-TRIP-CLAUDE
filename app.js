@@ -155,9 +155,31 @@ const students = {
 const collaborationApi = window.SydneyCollaboration;
 const collaborationStoreKey = "sydney-archi-walk-collaboration-v1";
 let collaborationState = collaborationApi.hydrateState(localStorage.getItem(collaborationStoreKey));
+const firebaseCollaborationSync = window.SydneyFirebaseSync
+    ? window.SydneyFirebaseSync.createFirebaseCollaborationSync()
+    : null;
+const sharedDayKeys = ['day1', 'day2', 'day3', 'day4', 'day5'];
+const baseDaySpots = sharedDayKeys.reduce((days, dayKey) => {
+    days[dayKey] = routesData[dayKey].spots.map((spot) => ({ ...spot }));
+    return days;
+}, {});
 
 function saveCollaborationState() {
     localStorage.setItem(collaborationStoreKey, collaborationApi.serializeState(collaborationState));
+    if (firebaseCollaborationSync) {
+        firebaseCollaborationSync.save(collaborationState).catch((error) => {
+            console.warn("Firebase collaboration save failed. Local backup was kept.", error);
+        });
+    }
+}
+
+function applyCustomDaySpots() {
+    sharedDayKeys.forEach((dayKey) => {
+        routesData[dayKey].spots = [
+            ...baseDaySpots[dayKey].map((spot) => ({ ...spot })),
+            ...collaborationApi.getDaySpots(collaborationState, dayKey),
+        ];
+    });
 }
 
 function getStudentIdFromRoute(routeKey) {
@@ -173,6 +195,7 @@ function getSelectedPlanDay() {
 }
 
 function syncCollaborationRoutes() {
+    applyCustomDaySpots();
     const selectedDay = getSelectedPlanDay();
 
     Object.entries(students).forEach(([studentId, student]) => {
@@ -397,6 +420,13 @@ function updateRouteView(routeKey) {
                 if (confirm(`"${spot.name}" 장소를 일정에서 제거하시겠습니까?`)) {
                     const targetDay = e.currentTarget.dataset.origin;
                     if (routesData[targetDay]) {
+                        const isSharedCustomSpot = collaborationApi
+                            .getDaySpots(collaborationState, targetDay)
+                            .some((sharedSpot) => String(sharedSpot.id) === String(spot.id));
+                        if (isSharedCustomSpot) {
+                            collaborationState = collaborationApi.removeDaySpot(collaborationState, targetDay, spot.id);
+                            saveCollaborationState();
+                        }
                         routesData[targetDay].spots = routesData[targetDay].spots.filter(s => s.id !== spot.id);
                     }
                     updateRouteView(routeKey);
@@ -646,7 +676,8 @@ document.getElementById('dynamic-add-form').addEventListener('submit', async (e)
                 });
                 saveCollaborationState();
             } else {
-                routesData[selectedDay].spots.push(newSpot);
+                collaborationState = collaborationApi.addDaySpot(collaborationState, selectedDay, newSpot);
+                saveCollaborationState();
             }
 
             // 입력 필드 비우기
@@ -764,6 +795,22 @@ document.getElementById('btn-export-image').addEventListener('click', () => {
 
 // --- 7. 초기 렌더링 ---
 window.addEventListener('DOMContentLoaded', () => {
+    if (firebaseCollaborationSync) {
+        firebaseCollaborationSync.start(collaborationState, {
+            onRemoteState: (remoteState) => {
+                collaborationState = remoteState;
+                localStorage.setItem(collaborationStoreKey, collaborationApi.serializeState(collaborationState));
+                updateRouteView(activeRouteKey);
+            },
+            onStatus: (status) => {
+                console.info(`Firebase collaboration sync: ${status}`);
+            },
+            onError: (error) => {
+                console.warn("Firebase collaboration sync is unavailable. Local backup remains active.", error);
+            },
+        });
+    }
+
     setTimeout(() => {
         map.invalidateSize();
         updateRouteView('all');
